@@ -226,16 +226,17 @@ def probe_pcie_link(root: Path = Path("/"), lspci_output: str | None = None) -> 
             negotiated = _parse_link_line(line)
         elif line.startswith("LnkCap:"):
             capability = _parse_link_line(line)
+    if negotiated is None:
+        return unknown(src, "LnkSta line not found")
+    if capability is None:
+        return unknown(src, "LnkCap line not found")
     result = {
+        "value": negotiated["raw"],
         "negotiated": negotiated,
         "capability": capability,
         "source": src,
         "status": "ok",
     }
-    if negotiated is None:
-        return unknown(src, "LnkSta line not found")
-    if capability is None:
-        return unknown(src, "LnkCap line not found")
     result["interpretation"] = generate_interpretation_string(negotiated, capability)
     return result
 

@@ -22,6 +22,7 @@
         "status": "ok"
     },
     "pcie_link": {
+        "value": "LnkSta:\tSpeed 2.5GT/s (ok), Width x1 (ok)",
         "negotiated": {
             "raw": "LnkSta:\tSpeed 2.5GT/s (ok), Width x1 (ok)",
             "gts": 2.5,
@@ -43,35 +44,35 @@
             {
                 "zone": "thermal_zone0",
                 "type": "cpu-thermal",
-                "temp_c": 50.781
+                "temp_c": 51.218
             },
             {
                 "zone": "thermal_zone7",
                 "type": "soc2-thermal",
-                "temp_c": 49.937
+                "temp_c": 50.312
             },
             {
                 "zone": "thermal_zone5",
                 "type": "soc0-thermal",
-                "temp_c": 51.437
+                "temp_c": 51.875
             },
             {
                 "zone": "thermal_zone1",
                 "type": "gpu-thermal",
-                "temp_c": 51.062
+                "temp_c": 51.25
             },
             {
                 "zone": "thermal_zone8",
                 "type": "tj-thermal",
-                "temp_c": 51.468
+                "temp_c": 51.875
             },
             {
                 "zone": "thermal_zone6",
                 "type": "soc1-thermal",
-                "temp_c": 50.593
+                "temp_c": 51.062
             }
         ],
-        "value": 51.468,
+        "value": 51.875,
         "source": "/sys/class/thermal/thermal_zone*/temp",
         "status": "ok"
     },
