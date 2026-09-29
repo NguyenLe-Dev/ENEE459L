@@ -1,0 +1,74 @@
+{
+    "warmup_boundary": {
+        "value": 1,
+        "source": "leading prefix above (1 + 0.5) x median of the run's second half",
+        "status": "ok",
+        "settled_rate_ms": 18.234054999999998,
+        "threshold_ms": 27.351082499999997,
+        "tolerance": 0.5,
+        "retained": 99
+    },
+    "summarize_setup": {
+        "n": 100,
+        "mean": 22.4595,
+        "std": 41.8302,
+        "min": 18.1129,
+        "max": 436.5747,
+        "p50": 18.2191,
+        "p95": 18.6831,
+        "p99": 23.4776
+    },
+    "is_multimodal": {
+        "value": false,
+        "source": "widest trimmed gap >= 20.0x the median gap, with >= 10% of samples on each side",
+        "status": "ok",
+        "gap_ratio": 143.58,
+        "widest_gap_ms": 0.25729,
+        "typical_gap_ms": 0.00179,
+        "modes": [
+            {
+                "n": 89,
+                "share": 0.99,
+                "median_ms": 18.2189
+            },
+            {
+                "n": 1,
+                "share": 0.01,
+                "median_ms": 18.6814
+            }
+        ]
+    },
+    "probe_power_state": {
+        "value": "25W",
+        "source": "nvpmodel -q",
+        "status": "ok",
+        "mode_index": 1,
+        "jetson_clocks": false,
+        "jetson_clocks_source": {
+            "value": "scaling_min_freq=729600, scaling_max_freq=1344000",
+            "source": "sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq vs sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq",
+            "status": "ok"
+        }
+    },
+    "probe_telemetry": {
+        "temperature_c": {
+            "value": 52.94,
+            "source": "sys/devices/virtual/thermal/*/temp",
+            "status": "ok",
+            "zone": "soc0-thermal",
+            "zones_read": 6
+        },
+        "power_mw": {
+            "value": null,
+            "source": "sys/bus/i2c/drivers/ina3221/1-0040/hwmon/hwmon3/in1_input | sys/bus/i2c/drivers/ina3221/1-0040/iio:device0/in_power0_input | sys/bus/i2c/drivers/ina3221x/1-0040/iio:device0/in_power0_input",
+            "status": "unknown",
+            "detail": "none of the documented INA3221 rail paths could be read"
+        },
+        "gpu_utilization_percent": {
+            "value": 28.2,
+            "source": "sys/devices/platform/gpu.0/load",
+            "status": "ok",
+            "units": "per-mille / 10"
+        }
+    }
+}
