@@ -54,6 +54,9 @@ cd lab04/
 
 # Generate the report on the board
 python main.py
+
+# Calculate per-layer and whole-model arithmetic intensity
+python assignment2.py
 ```
 
 After completing the code, please validate the resulting JSON output file against `sample_complexity_results.json` to ensure it conforms to the expected format before submission.
