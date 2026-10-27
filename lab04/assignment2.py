@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 FLOPS_PER_MAC = 2
@@ -23,12 +23,12 @@ class Layer:
     kind: str
     in_shape: tuple[int, ...]
     out_shape: tuple[int, ...]
+    reads: list[str] = field(default_factory=list)
+    act_dtype: str = "fp32"
+    weight_dtype: str = "fp32"
     kernel: tuple[int, int] | None = None
     groups: int = 1
     bias: bool = False
-    weight_dtype: str = "fp32"
-    act_dtype: str = "fp32"
-    reads: tuple[str, ...] = ()
 
     @staticmethod
     def _elements(shape: tuple[int, ...]) -> int:
@@ -44,7 +44,6 @@ class Layer:
     @property
     def out_elements(self) -> int:
         return self._elements(self.out_shape)
-
 
 @dataclass
 class Graph:
@@ -82,21 +81,90 @@ def _layer_parameters(layer: Layer) -> int:
 
 
 def build_synthetic_graph() -> Graph:
+    """Builds a small ResNet-like toy network to exercise all paths:
+    - Conv with bias=False and kernel=(3, 3)
+    - Batch Norm (parametric + buffers)
+    - Skip-connection (Layer.reads across layers)
+    - Linear layer with bias
+    """
     layers = [
-        Layer("conv1", "conv", (3, 32, 32), (16, 32, 32),
-              kernel=(3, 3), weight_dtype="fp32", act_dtype="fp32"),
-        Layer("bn1", "bn", (16, 32, 32), (16, 32, 32)),
-        Layer("relu1", "relu", (16, 32, 32), (16, 32, 32)),
-        Layer("res_conv", "conv", (16, 32, 32), (16, 32, 32),
-              kernel=(3, 3), reads=("relu1",)),
-        Layer("add1", "add", (16, 32, 32), (16, 32, 32),
-              reads=("relu1", "res_conv")),
-        Layer("pool", "pool", (16, 32, 32), (16, 1, 1)),
-        Layer("flatten", "flatten", (16, 1, 1), (16,)),
-        Layer("fc", "linear", (16,), (10,), bias=True),
+        # 1. Stem conv
+        Layer(
+            name="conv1",
+            kind="conv",
+            in_shape=(3, 32, 32),
+            out_shape=(16, 32, 32),
+            kernel=(3, 3),
+            bias=False,
+            weight_dtype="fp32",
+            act_dtype="fp32",
+        ),
+        # 2. Batch norm
+        Layer(
+            name="bn1",
+            kind="bn",
+            in_shape=(16, 32, 32),
+            out_shape=(16, 32, 32),
+            weight_dtype="fp32",
+            act_dtype="fp32",
+        ),
+        # 3. Activation (zero params)
+        Layer(
+            name="relu1",
+            kind="relu",
+            in_shape=(16, 32, 32),
+            out_shape=(16, 32, 32),
+        ),
+        # 4. Residual branch 1 (conv)
+        Layer(
+            name="res_conv",
+            kind="conv",
+            in_shape=(16, 32, 32),
+            out_shape=(16, 32, 32),
+            kernel=(3, 3),
+            bias=False,
+            reads=("relu1",),
+        ),
+        # 5. Skip connection add (combines relu1 and res_conv)
+        Layer(
+            name="add1",
+            kind="add",
+            in_shape=(16, 32, 32),
+            out_shape=(16, 32, 32),
+            reads=("relu1", "res_conv"),
+        ),
+        # 6. Global average pool
+        Layer(
+            name="pool",
+            kind="pool",
+            in_shape=(16, 32, 32),
+            out_shape=(16, 1, 1),
+        ),
+        # 7. Flatten (spatial to 1D)
+        Layer(
+            name="flatten",
+            kind="flatten",
+            in_shape=(16, 1, 1),
+            out_shape=(16,),
+        ),
+        # 8. Classification head
+        Layer(
+            name="fc",
+            kind="linear",
+            in_shape=(16,),
+            out_shape=(10,),
+            bias=True,
+            weight_dtype="fp32",
+            act_dtype="fp32",
+        ),
     ]
-    return Graph("toy_resnet", (3, 32, 32), layers)
 
+    return Graph(
+        name="toy_resnet",
+        input_shape=(3, 32, 32),
+        layers=layers,
+        precision="fp32",
+    )
 
 def _layer_macs(layer: Layer) -> int:
     if layer.kind == "conv":
