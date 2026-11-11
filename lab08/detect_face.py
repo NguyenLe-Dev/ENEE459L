@@ -59,8 +59,7 @@ def hard_nms(box_scores, iou_threshold, top_k=-1, candidate_size=200):
         union = best_area + remaining_area - intersection
         iou = np.zeros_like(intersection, dtype=float)
         np.divide(intersection, union, out=iou, where=union > 0)
-
-        # Keep boxes at or below the threshold; suppress only those above it.
+        
         order = remaining[iou <= iou_threshold]
 
     return box_scores[picked]
