@@ -1,6 +1,7 @@
 
 from __future__ import annotations
 
+from math import fsum
 from typing import Any, Iterable, Sequence
 
 from schema import LATENCY_PERCENTILES, REL_FLOOR
@@ -46,7 +47,12 @@ class AgreementError(ValueError):
 def _finite(v: Any, where: str) -> float:
     if isinstance(v, bool) or not isinstance(v, (int, float)):
         raise AgreementError(f"{where} is {v!r}, which is not a number.")
-    f = float(v)
+    try:
+        f = float(v)
+    except OverflowError as exc:
+        raise AgreementError(
+            f"{where} is {v!r}, which cannot be represented as a finite number."
+        ) from exc
     if f != f or f in (float("inf"), float("-inf")):
         raise AgreementError(
             f"{where} is {f}. A NaN or an infinity in an output array is the "
@@ -82,30 +88,207 @@ def _percentile(xs: Sequence[float], q: float) -> float:
 
 
 def latency_report(ms: Iterable[float]) -> dict[str, Any]:
-    pass
+    values: list[float] = []
+    for i, value in enumerate(ms):
+        sample = _finite(value, f"ms[{i}]")
+        if sample < 0:
+            raise AgreementError(f"ms[{i}] is {sample}, which is negative.")
+        values.append(sample)
+
+    if not values:
+        raise AgreementError("no latency samples.")
+
+    n = len(values)
+    percentiles = {
+        q: _percentile(values, q) for q in LATENCY_PERCENTILES
+    }
+    mean = fsum(value / n for value in values)
+    return {
+        "n": n,
+        "mean": mean,
+        "worst": max(values),
+        "p50": percentiles[50],
+        "p95": percentiles[95],
+        "p99": percentiles[99],
+        "jitter": percentiles[95] - percentiles[50],
+    }
 
 
 def speedup(base_ms: float, other_ms: float) -> dict[str, Any]:
-    pass
+    base = _finite(base_ms, "base_ms")
+    other = _finite(other_ms, "other_ms")
+    if base <= 0:
+        raise AgreementError(f"base_ms is {base}, which must be positive.")
+    if other <= 0:
+        raise AgreementError(f"other_ms is {other}, which must be positive.")
+
+    factor = _finite(base / other, "speedup factor")
+    return {
+        "factor": factor,
+        "faster": factor > 1.0,
+        "saved_ms": base - other,
+    }
 
 
 def max_abs_dev(a: Sequence[float], b: Sequence[float]) -> dict[str, Any]:
-    pass
+    if not a or not b:
+        raise AgreementError("output sequences must be non-empty.")
+    if len(a) != len(b):
+        raise AgreementError(
+            f"output lengths differ: len(a)={len(a)}, len(b)={len(b)}."
+        )
+
+    first_a = _finite(a[0], "a[0]")
+    first_b = _finite(b[0], "b[0]")
+    best = _finite(abs(first_a - first_b), "absolute deviation at index 0")
+    best_i = 0
+    best_a = first_a
+    best_b = first_b
+
+    for i in range(1, len(a)):
+        value_a = _finite(a[i], f"a[{i}]")
+        value_b = _finite(b[i], f"b[{i}]")
+        deviation = _finite(abs(value_a - value_b),
+                            f"absolute deviation at index {i}")
+        if deviation > best:
+            best = deviation
+            best_i = i
+            best_a = value_a
+            best_b = value_b
+
+    return {
+        "max_abs": best,
+        "index": best_i,
+        "a": best_a,
+        "b": best_b,
+        "n": len(a),
+    }
 
 
 def max_rel_dev(a: Sequence[float], b: Sequence[float],
                 floor: float = REL_FLOOR) -> dict[str, Any]:
-    pass
+    denominator_floor = _finite(floor, "floor")
+    if denominator_floor <= 0:
+        raise AgreementError(
+            f"floor is {denominator_floor}, which must be positive."
+        )
+    if not a or not b:
+        raise AgreementError("output sequences must be non-empty.")
+    if len(a) != len(b):
+        raise AgreementError(
+            f"output lengths differ: len(a)={len(a)}, len(b)={len(b)}."
+        )
+
+    best = -1.0
+    best_i = 0
+    floored = 0
+    denom_min = float("inf")
+    for i, (raw_a, raw_b) in enumerate(zip(a, b)):
+        value_a = _finite(raw_a, f"a[{i}]")
+        value_b = _finite(raw_b, f"b[{i}]")
+        denominator = abs(value_b)
+        denom_min = min(denom_min, denominator)
+        if denominator < denominator_floor:
+            floored += 1
+        relative = _finite(
+            abs(value_a - value_b) / max(denominator, denominator_floor),
+            f"relative deviation at index {i}",
+        )
+        if relative > best:
+            best = relative
+            best_i = i
+
+    return {
+        "max_rel": best,
+        "index": best_i,
+        "floored": floored,
+        "denom_min": denom_min,
+        "n": len(a),
+    }
 
 
 def top1_agreement(rows_a: Sequence[Sequence[float]],
                    rows_b: Sequence[Sequence[float]]) -> dict[str, Any]:
-    pass
+    if not rows_a or not rows_b:
+        raise AgreementError("score row sequences must be non-empty.")
+    if len(rows_a) != len(rows_b):
+        raise AgreementError(
+            f"row counts differ: len(rows_a)={len(rows_a)}, "
+            f"len(rows_b)={len(rows_b)}."
+        )
+
+    agree = 0
+    first_disagreement = None
+    for k, (raw_a, raw_b) in enumerate(zip(rows_a, rows_b)):
+        if not raw_a or not raw_b:
+            raise AgreementError(f"score rows at index {k} must be non-empty.")
+        if len(raw_a) != len(raw_b):
+            raise AgreementError(
+                f"score row widths differ at index {k}: "
+                f"len(rows_a[{k}])={len(raw_a)}, len(rows_b[{k}])={len(raw_b)}."
+            )
+
+        row_a = [_finite(value, f"rows_a[{k}][{c}]")
+                 for c, value in enumerate(raw_a)]
+        row_b = [_finite(value, f"rows_b[{k}][{c}]")
+                 for c, value in enumerate(raw_b)]
+        top_a = max(range(len(row_a)), key=row_a.__getitem__)
+        top_b = max(range(len(row_b)), key=row_b.__getitem__)
+        if top_a == top_b:
+            agree += 1
+        elif first_disagreement is None:
+            first_disagreement = k
+
+    n = len(rows_a)
+    return {
+        "n": n,
+        "agree": agree,
+        "disagree": n - agree,
+        "rate": agree / n,
+        "first_disagreement": first_disagreement,
+    }
 
 
 def decision_margin(rows: Sequence[Sequence[float]],
                     tol: float) -> dict[str, Any]:
-    pass
+    tolerance = _finite(tol, "tol")
+    if tolerance < 0:
+        raise AgreementError(f"tol is {tolerance}, which must be non-negative.")
+    if not rows:
+        raise AgreementError("score rows must be non-empty.")
+
+    margins: list[float] = []
+    for k, raw_row in enumerate(rows):
+        if len(raw_row) < 2:
+            raise AgreementError(
+                f"rows[{k}] has fewer than two classes; decision margin "
+                "is undefined."
+            )
+        row = [_finite(value, f"rows[{k}][{c}]")
+               for c, value in enumerate(raw_row)]
+        top_two = sorted(row, reverse=True)[:2]
+        margins.append(
+            _finite(top_two[0] - top_two[1], f"decision margin at row {k}")
+        )
+
+    min_margin = margins[0]
+    argmin = 0
+    for k, margin in enumerate(margins[1:], start=1):
+        if margin < min_margin:
+            min_margin = margin
+            argmin = k
+
+    n = len(margins)
+    below_tol = sum(margin < tolerance for margin in margins)
+    return {
+        "n": n,
+        "min": min_margin,
+        "median": _percentile(margins, 50),
+        "mean": fsum(margin / n for margin in margins),
+        "argmin": argmin,
+        "below_tol": below_tol,
+        "safe": below_tol == 0,
+    }
 
 #############################################################
 ###############  Main function starts here ##################
